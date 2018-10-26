@@ -45,7 +45,7 @@
 ### Usage
 
 ```bash
-wget -O ee-nginx-setup.sh https://raw.githubusercontent.com/VirtuBox/ee-nginx-setup/master/init.sh
+wget -O ee-nginx-setup.sh https://raw.githubusercontent.com/VirtuBox/ee-nginx-setup/master/ee-nginx-setup.sh
 chmod +x ee-nginx-setup.sh
 ./ee-nginx-setup.sh
 ```
