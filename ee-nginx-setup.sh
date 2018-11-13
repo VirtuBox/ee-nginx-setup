@@ -1,7 +1,16 @@
 #!/bin/bash
-
-# automated EasyEngine server configuration script
+#----------------------------------------------------------------------------
+# EE-NGINX-SETUP -  automated EasyEngine server configuration script
+#----------------------------------------------------------------------------
+# Website:       https://virtubox.net
+# GitHub:        https://github.com/VirtuBox/ee-nginx-setup
+# Author:        VirtuBox
+# License:       M.I.T
+#----------------------------------------------------------------------------
+#
 # currently in progress, not ready to be used in production yet
+#
+#----------------------------------------------------------------------------
 
 CSI='\033['
 CEND="${CSI}0m"
@@ -38,6 +47,7 @@ echo ""
 
 if [ -d /etc/ee ] && [ -d /etc/mysql ] && [ -d /etc/nginx ]; then
     echo "Previous EasyEngine install detected"
+    EE_PREVIOUS_INSTALL=1
 fi
 
 ##################################
@@ -147,6 +157,8 @@ echo "use CTRL + C if you want to cancel installation"
 echo "#####################################"
 sleep 5
 
+
+
 ##################################
 # Update packages
 ##################################
@@ -168,7 +180,7 @@ echo "##########################################"
 echo " Installing useful packages"
 echo "##########################################"
 
-sudo apt-get install haveged curl git unzip zip fail2ban htop nload nmon ntp gnupg gnupg2 wget pigz tree ccze -y
+sudo apt-get install haveged curl git unzip zip fail2ban htop nload nmon ntp gnupg gnupg2 wget pigz tree ccze mycli -y
 
 # ntp time
 sudo systemctl enable ntp
@@ -220,12 +232,15 @@ sudo ufw logging low
 sudo ufw default allow outgoing
 sudo ufw default deny incoming
 
-# allow required ports
-if [ "$CURRENT_SSH_PORT" = "22" ]; then
-    sudo ufw allow 22
-else
+
+# default ssh port
+sudo ufw allow 22
+
+# custom ssh port
+if [ "$CURRENT_SSH_PORT" != "22" ];then
     sudo ufw allow $CURRENT_SSH_PORT
 fi
+
 # dns
 sudo ufw allow 53
 
@@ -292,16 +307,15 @@ fi
 # additional systcl configuration with network interface name
 # get network interface names like eth0, ens18 or eno1
 # for each interface found, add the following configuration to sysctl
-NET_INTERFACES_LIST=$(ls /sys/class/net | grep -E "/(?:veth(.*))|eth(.*)|ens(.*)|eno(.*)/")
-for NET_INTERFACE in $NET_INTERFACES_LIST; do
-    echo "" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-    echo "# do not autoconfigure IPv6 on $NET_INTERFACE" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-    echo "net.ipv6.conf.$NET_INTERFACE.autoconf = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-    echo "net.ipv6.conf.$NET_INTERFACE.accept_ra = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-    echo "net.ipv6.conf.$NET_INTERFACE.accept_ra = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-    echo "net.ipv6.conf.$NET_INTERFACE.autoconf = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-    echo "net.ipv6.conf.$NET_INTERFACE.accept_ra_defrtr = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-done
+NET_INTERFACES_WAN=$(ip -4 route get 8.8.8.8 | grep -oP "dev [^[:space:]]+ " | cut -d ' ' -f 2)
+echo "" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
+echo "# do not autoconfigure IPv6 on $NET_INTERFACES_WAN" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
+echo "net.ipv6.conf.$NET_INTERFACES_WAN.autoconf = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
+echo "net.ipv6.conf.$NET_INTERFACES_WAN.accept_ra = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
+echo "net.ipv6.conf.$NET_INTERFACES_WAN.accept_ra = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
+echo "net.ipv6.conf.$NET_INTERFACES_WAN.autoconf = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
+echo "net.ipv6.conf.$NET_INTERFACES_WAN.accept_ra_defrtr = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
+
 
 ##################################
 # Add MariaDB 10.3 repository
@@ -345,16 +359,16 @@ if [ "$mariadb_server_install" = "y" ]; then
         DEBIAN_FRONTEND=noninteractive apt-get install -qq mariadb-server # -qq implies -y --force-yes
         # save credentials in .my.cnf and copy it in /etc/mysql/conf.d for easyengine
         sudo bash -c 'echo -e "[client]\nuser = root" > $HOME/.my.cnf'
-        echo "password = $MYSQL_ROOT_PASS" >>$HOME/.my.cnf
+        sudo bash -c 'echo -e "[client]\nuser = root\npassword = $MYSQL_ROOT_PASS" > $HOME/.my.cnf'
         cp -f $HOME/.my.cnf /etc/mysql/conf.d/my.cnf
 
         ## mysql_secure_installation non-interactive way
         mysql -e "GRANT ALL PRIVILEGES on *.* to 'root'@'localhost' IDENTIFIED BY '$MYSQL_ROOT_PASS' WITH GRANT OPTION;"
         # remove anonymous users
-        mysql -e "DROP USER ''@'localhost'"
-        mysql -e "DROP USER ''@'$(hostname)'"
+        mysql -e "DROP USER ''@'localhost'" > /dev/null 2>&1
+        mysql -e "DROP USER ''@'$(hostname)'" > /dev/null 2>&1
         # remove test database
-        mysql -e "DROP DATABASE test"
+        mysql -e "DROP DATABASE test" > /dev/null 2>&1
         # flush privileges
         mysql -e "FLUSH PRIVILEGES"
     fi
@@ -403,11 +417,7 @@ if [ "$mariadb_client_install" = "y" ]; then
     apt-get install -y mariadb-client
 
     # set mysql credentials in .my.cnf
-    echo "[client]" >>$HOME/.my.cnf
-    echo "host = $mariadb_remote_ip" >>$HOME/.my.cnf
-    echo "port = 3306" >>$HOME/.my.cnf
-    echo "user = $mariadb_remote_user" >>$HOME/.my.cnf
-    echo "password = $mariadb_remote_password" >>$HOME/.my.cnf
+    sudo bash -c 'echo -e "[client]\nhost = $mariadb_remote_ip\nport = 3306\nuser = $mariadb_remote_user\npassword = $mariadb_remote_password" > $HOME/.my.cnf'
 
     # copy .my.cnf in /etc/mysql/conf.d/ for easyengine
     cp $HOME/.my.cnf /etc/mysql/conf.d/my.cnf
@@ -417,83 +427,92 @@ fi
 # EasyEngine automated install
 ##################################
 
-if [ ! -f $HOME/.gitconfig ]; then
-    # define git username and email for non-interactive install
-    sudo bash -c 'echo -e "[user]\n\tname = $USER\n\temail = $USER@$HOSTNAME" > $HOME/.gitconfig'
-fi
-if [ ! -x /usr/local/bin/ee ]; then
+if [ -z "$EE_PREVIOUS_INSTALL" ]; then
+
+    if [ ! -f $HOME/.gitconfig ]; then
+        # define git username and email for non-interactive install
+        sudo bash -c 'echo -e "[user]\n\tname = $USER\n\temail = $USER@$HOSTNAME" > $HOME/.gitconfig'
+    fi
+    if [ ! -x /usr/local/bin/ee ]; then
+        echo "##########################################"
+        echo " Installing EasyEngine"
+        echo "##########################################"
+
+        wget -O ee https://raw.githubusercontent.com/EasyEngine/easyengine/master/install
+        bash ee
+        source /etc/bash_completion.d/ee_auto.rc
+
+    fi
+
+
+    ##################################
+    # EasyEngine stacks install
+    ##################################
+
+    if [ "$mariadb_client_install" = "y" ]; then
+        # change MySQL host to % in case of remote MySQL server
+        sudo sed -i 's/grant-host = localhost/grant-host = \%/' /etc/ee/ee.conf
+    fi
+
     echo "##########################################"
-    echo " Installing EasyEngine"
+    echo " Installing EasyEngine Stack"
     echo "##########################################"
 
-    wget -qO ee https://raw.githubusercontent.com/EasyEngine/easyengine/master/install
-    bash ee
-    source /etc/bash_completion.d/ee_auto.rc
+    if [ -d /etc/mysql ]; then
+        # install nginx, php, postfix, memcached
+        ee stack install
+        # install php7, redis, easyengine backend & phpredisadmin
+        ee stack install --php7 --redis --admin --phpredisadmin
+    else
+        ee stack install --nginx --php -php7 --redis --wpcli
+    fi
 
+    ##################################
+    # Fix phpmyadmin install
+    ##################################
+    echo "##########################################"
+    echo " Updating phpmyadmin"
+    echo "##########################################"
+
+    # install composer
+    cd ~/ || exit
+    curl -sS https://getcomposer.org/installer | php
+    mv composer.phar /usr/bin/composer
+
+    # change owner of /var/www to allow composer cache
+    chown www-data:www-data /var/www
+    # update phpmyadmin with composer
+    if [ -d /var/www/22222/htdocs/db/pma ]; then
+        sudo -u www-data -H composer update -d /var/www/22222/htdocs/db/pma/
+    fi
+
+    ##################################
+    # Allow www-data shell access for SFTP + add .bashrc settings et completion
+    ##################################
+    echo "##########################################"
+    echo " Configuring www-data shell access"
+    echo "##########################################"
+
+    # change www-data shell
+    usermod -s /bin/bash www-data
+
+    if [ ! -f /etc/bash_completion.d/wp-completion.bash ]; then
+        # download wp-cli bash-completion
+        sudo wget -qO /etc/bash_completion.d/wp-completion.bash https://raw.githubusercontent.com/wp-cli/wp-cli/master/utils/wp-completion.bash
+    fi
+    if [ ! -f /var/www/.profile ] && [ ! -f /var/www/.bashrc ]; then
+        # create .profile & .bashrc for www-data user
+        cp -f $REPO_PATH/var/www/.profile /var/www/.profile
+        cp -f $REPO_PATH/var/www/.bashrc /var/www/.bashrc
+
+        # set www-data as owner
+        sudo chown www-data:www-data /var/www/.profile
+        sudo chown www-data:www-data /var/www/.bashrc
+    fi
+
+    # install nanorc for www-data
+    sudo -u www-data -H curl https://raw.githubusercontent.com/scopatz/nanorc/master/install.sh | sh
 fi
-
-##################################
-# EasyEngine stacks install
-##################################
-
-if [ "$mariadb_client_install" = "y" ]; then
-    # change MySQL host to % in case of remote MySQL server
-    sudo sed -i 's/grant-host = localhost/grant-host = \%/' /etc/ee/ee.conf
-fi
-
-echo "##########################################"
-echo " Installing EasyEngine Stack"
-echo "##########################################"
-
-# install nginx, php, postfix, memcached
-ee stack install
-# install php7, redis, easyengine backend & phpredisadmin
-ee stack install --php7 --redis --admin --phpredisadmin
-
-##################################
-# Fix phpmyadmin install
-##################################
-echo "##########################################"
-echo " Updating phpmyadmin"
-echo "##########################################"
-
-# install composer
-cd ~/ || exit
-curl -sS https://getcomposer.org/installer | php
-mv composer.phar /usr/bin/composer
-
-# change owner of /var/www to allow composer cache
-chown www-data:www-data /var/www
-# update phpmyadmin with composer
-sudo -u www-data -H composer update -d /var/www/22222/htdocs/db/pma/
-
-##################################
-# Allow www-data shell access for SFTP + add .bashrc settings et completion
-##################################
-echo "##########################################"
-echo " Configuring www-data shell access"
-echo "##########################################"
-
-# change www-data shell
-usermod -s /bin/bash www-data
-
-if [ ! -f /etc/bash_completion.d/wp-completion.bash ]; then
-    # download wp-cli bash-completion
-    sudo wget -qO /etc/bash_completion.d/wp-completion.bash https://raw.githubusercontent.com/wp-cli/wp-cli/master/utils/wp-completion.bash
-fi
-if [ ! -f /var/www/.profile ] && [ ! -f /var/www/.bashrc ]; then
-    # create .profile & .bashrc for www-data user
-    cp -f $REPO_PATH/var/www/.profile /var/www/.profile
-    cp -f $REPO_PATH/var/www/.bashrc /var/www/.bashrc
-
-    # set www-data as owner
-    sudo chown www-data:www-data /var/www/.profile
-    sudo chown www-data:www-data /var/www/.bashrc
-fi
-
-# install nanorc for www-data
-sudo -u www-data -H curl https://raw.githubusercontent.com/scopatz/nanorc/master/install.sh | sh
-
 ##################################
 # Install php7.1-fpm
 ##################################
@@ -505,7 +524,7 @@ if [ "$phpfpm71_install" = "y" ]; then
     echo "##########################################"
 
     sudo apt-get install php7.1-fpm php7.1-cli php7.1-zip php7.1-opcache php7.1-mysql php7.1-mcrypt php7.1-mbstring php7.1-json php7.1-intl \
-        php7.1-gd php7.1-curl php7.1-bz2 php7.1-xml php7.1-tidy php7.1-soap php7.1-bcmath -y php7.1-xsl -y
+    php7.1-gd php7.1-curl php7.1-bz2 php7.1-xml php7.1-tidy php7.1-soap php7.1-bcmath -y php7.1-xsl -y
 
     # copy php7.1 config files
     sudo cp -rf $REPO_PATH/etc/php/7.1/* /etc/php/7.1/
@@ -523,7 +542,7 @@ if [ "$phpfpm72_install" = "y" ]; then
     echo "##########################################"
 
     sudo apt-get install php7.2-fpm php7.2-xml php7.2-bz2 php7.2-zip php7.2-mysql php7.2-intl php7.2-gd \
-        php7.2-curl php7.2-soap php7.2-mbstring php7.2-xsl php7.2-bcmath -y
+    php7.2-curl php7.2-soap php7.2-mbstring php7.2-xsl php7.2-bcmath -y
 
     # copy php7.2 config files
     sudo cp -rf $REPO_PATH/etc/php/7.2/* /etc/php/7.2/
@@ -603,6 +622,11 @@ cp -f $REPO_PATH/etc/nginx/mime.types /etc/nginx/mime.types
 # optimized nginx.config
 cp -f $REPO_PATH/etc/nginx/nginx.conf /etc/nginx/nginx.conf
 
+# reduce nginx logs rotation
+sed -i 's/size 10M/weekly/' /etc/logrotate.d/nginx
+sed -i 's/rotate 52/rotate 4/' /etc/logrotate.d/nginx
+
+
 # check nginx configuration
 CONF_22222=$(grep -c netdata /etc/nginx/sites-available/22222)
 CONF_UPSTREAM=$(grep -c netdata /etc/nginx/conf.d/upstream.conf)
@@ -680,10 +704,10 @@ echo " Installing cheat.sh & nanorc & mysqldump script"
 echo "##########################################"
 
 if [ ! -x /usr/bin/cht.sh ]; then
-    curl https://cht.sh/:cht.sh >/usr/bin/cht.sh
+    curl -s https://cht.sh/:cht.sh >/usr/bin/cht.sh
     chmod +x /usr/bin/cht.sh
 
-    cd || exit
+    cd || exit 1
     echo "alias cheat='cht.sh'" >>.bashrc
     source $HOME/.bashrc
 fi
@@ -720,8 +744,11 @@ if [ "$proftpd_install" = "y" ]; then
         sudo ufw allow 49000:50000/tcp
     fi
 
-fi
+    if [ -d /etc/fail2ban ]; then
+        echo -e '\n[proftpd]\nenabled = true\n' >> /etc/fail2ban/jail.d/custom.conf
 
+    fi
+fi
 ##################################
 # Install Netdata
 ##################################
@@ -739,6 +766,16 @@ if [ ! -d /etc/netdata ]; then
     ## optimize netdata resources usage
     echo 1 >/sys/kernel/mm/ksm/run
     echo 1000 >/sys/kernel/mm/ksm/sleep_millisecs
+
+    if [ "$mariadb_server_install" = "y" ]; then
+        mysql -e  "create user 'netdata'@'localhost';"
+        mysql -e  "grant usage on *.* to 'netdata'@'localhost';"
+        mysql -e  "flush privileges;"
+        elif [ "$mariadb_client_install" = "y" ]; then
+        mysql -e  "create user 'netdata'@'%';"
+        mysql -e  "grant usage on *.* to 'netdata'@'%';"
+        mysql -e  "flush privileges;"
+    fi
 
     ## disable email notifigrep -cions
     sudo sed -i 's/SEND_EMAIL="YES"/SEND_EMAIL="NO"/' /usr/lib/netdata/conf.d/health_alarm_notify.conf
@@ -788,24 +825,38 @@ if [ ! -f $HOME/.acme.sh/acme.sh ]; then
     echo ""
     wget -O - https://get.acme.sh | sh
     cd || exit
-    source .bashrc
+    source $HOME/.bashrc
+fi
+
+##################################
+# Install cheat.sh
+##################################
+
+if [ ! -x /usr/bin/cht.sh ]; then
+    echo "##########################################"
+    echo " Installing cheat.sh"
+    echo "##########################################"
+
+    curl https://cht.sh/:cht.sh > /usr/bin/cht.sh || wget -qO  /usr/bin/cht.sh https://cht.sh/:cht.sh
+    chmod +x /usr/bin/cht.sh
+
 fi
 
 ##################################
 # Secure EasyEngine Dashboard with Acme.sh
 ##################################
 
-MY_HOSTNAME=$(hostname -f)
-MY_IP=$(curl -s v4.vtbox.net)
-MY_HOSTNAME_IP=$(dig +short @8.8.8.8 "$MY_HOSTNAME")
+MY_HOSTNAME=$(/bin/hostname -f)
+MY_IP=$(ip -4 address show ${NET_INTERFACES_WAN} | grep 'inet' | sed 's/.*inet \([0-9\.]\+\).*/\1/')
+MY_HOSTNAME_IP=$(/usr/bin/dig +short @8.8.8.8 "$MY_HOSTNAME")
 
-if [[ "$MY_IP" == "$MY_HOSTNAME_IP" ]]; then
+if [ "$MY_IP" = "$MY_HOSTNAME_IP" ]; then
     echo "##########################################"
     echo " Securing EasyEngine Backend"
     echo "##########################################"
-        apt-get install -y socat
-        systemctl enable nginx.service
-        service nginx start
+    apt-get install -y socat
+    systemctl enable nginx.service
+    service nginx start
 
     if [ ! -d $HOME/.acme.sh/${MY_HOSTNAME}_ecc ]; then
         $HOME/.acme.sh/acme.sh --issue -d $MY_HOSTNAME --keylength ec-384 --standalone --pre-hook "service nginx stop " --post-hook "service nginx start"
@@ -820,10 +871,10 @@ if [[ "$MY_IP" == "$MY_HOSTNAME_IP" ]]; then
     # install the cert and reload nginx
     if [ -f $HOME/.acme.sh/${MY_HOSTNAME}_ecc/fullchain.cer ]; then
         $HOME/.acme.sh/acme.sh --install-cert -d ${MY_HOSTNAME} --ecc \
-            --cert-file /etc/letsencrypt/live/${MY_HOSTNAME}/cert.pem \
-            --key-file /etc/letsencrypt/live/${MY_HOSTNAME}/key.pem \
-            --fullchain-file /etc/letsencrypt/live/${MY_HOSTNAME}/fullchain.pem \
-            --reloadcmd "systemctl reload nginx.service"
+        --cert-file /etc/letsencrypt/live/${MY_HOSTNAME}/cert.pem \
+        --key-file /etc/letsencrypt/live/${MY_HOSTNAME}/key.pem \
+        --fullchain-file /etc/letsencrypt/live/${MY_HOSTNAME}/fullchain.pem \
+        --reloadcmd "systemctl enable nginx.service && systemct restart nginx.service"
     fi
 
     if [ -f /etc/letsencrypt/live/${MY_HOSTNAME}/fullchain.pem ] && [ -f /etc/letsencrypt/live/${MY_HOSTNAME}/key.pem ]; then
