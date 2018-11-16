@@ -22,7 +22,6 @@ CGREEN="${CSI}1;32m"
 ##################################
 
 EXTPLORER_VER="2.1.10"
-REPO_PATH=$HOME/ubuntu-nginx-web-server
 
 ##################################
 # Check if user is root
@@ -284,9 +283,9 @@ echo "##########################################"
 echo " Applying Linux Kernel tweaks"
 echo "##########################################"
 
-sudo cp -f $REPO_PATH/etc/sysctl.d/60-ubuntu-nginx-web-server.conf /etc/sysctl.d/60-ubuntu-nginx-web-server.conf
+sudo cp -f $HOME/ubuntu-nginx-web-server/etc/sysctl.d/60-ubuntu-nginx-web-server.conf /etc/sysctl.d/60-ubuntu-nginx-web-server.conf
 sudo sysctl -e -p /etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-sudo cp -f $REPO_PATH/etc/security/limits.conf /etc/security/limits.conf
+sudo cp -f $HOME/ubuntu-nginx-web-server/etc/security/limits.conf /etc/security/limits.conf
 
 # Redis transparent_hugepage
 echo never >/sys/kernel/mm/transparent_hugepage/enabled
@@ -358,8 +357,8 @@ if [ "$mariadb_server_install" = "y" ]; then
         # install mariadb server
         DEBIAN_FRONTEND=noninteractive apt-get install -qq mariadb-server # -qq implies -y --force-yes
         # save credentials in .my.cnf and copy it in /etc/mysql/conf.d for easyengine
-        sudo bash -c 'echo -e "[client]\nuser = root" > $HOME/.my.cnf'
-        sudo bash -c 'echo -e "[client]\nuser = root\npassword = $MYSQL_ROOT_PASS" > $HOME/.my.cnf'
+        echo -e '[client]\nuser = root' > $HOME/.my.cnf
+        echo "password = $MYSQL_ROOT_PASS" >>$HOME/.my.cnf
         cp -f $HOME/.my.cnf /etc/mysql/conf.d/my.cnf
 
         ## mysql_secure_installation non-interactive way
@@ -382,7 +381,7 @@ if [ "$mariadb_server_install" = "y" ]; then
     echo " Optimizing MariaDB configuration"
     echo "##########################################"
 
-    cp -f $REPO_PATH/etc/mysql/my.cnf /etc/mysql/my.cnf
+    cp -f $HOME/ubuntu-nginx-web-server/etc/mysql/my.cnf /etc/mysql/my.cnf
 
     # AVAILABLE_MEMORY=$(grep MemTotal /proc/meminfo | awk '{print $2}')
     # BUFFER_POOL_SIZE=$(( $AVAILABLE_MEMORY / 2000 ))
@@ -401,7 +400,7 @@ if [ "$mariadb_server_install" = "y" ]; then
     sudo mv /var/lib/mysql/ib_logfile1 /var/lib/mysql/ib_logfile1.bak
 
     # increase mariadb open_files_limit
-    cp -f $REPO_PATH/etc/systemd/system/mariadb.service.d/limits.conf /etc/systemd/system/mariadb.service.d/limits.conf
+    cp -f $HOME/ubuntu-nginx-web-server/etc/systemd/system/mariadb.service.d/limits.conf /etc/systemd/system/mariadb.service.d/limits.conf
 
     # reload daemon
     systemctl daemon-reload
@@ -417,7 +416,11 @@ if [ "$mariadb_client_install" = "y" ]; then
     apt-get install -y mariadb-client
 
     # set mysql credentials in .my.cnf
-    sudo bash -c 'echo -e "[client]\nhost = $mariadb_remote_ip\nport = 3306\nuser = $mariadb_remote_user\npassword = $mariadb_remote_password" > $HOME/.my.cnf'
+    echo "[client]" >>$HOME/.my.cnf
+    echo "host = $mariadb_remote_ip" >>$HOME/.my.cnf
+    echo "port = 3306" >>$HOME/.my.cnf
+    echo "user = $mariadb_remote_user" >>$HOME/.my.cnf
+    echo "password = $mariadb_remote_password" >>$HOME/.my.cnf
 
     # copy .my.cnf in /etc/mysql/conf.d/ for easyengine
     cp $HOME/.my.cnf /etc/mysql/conf.d/my.cnf
@@ -502,8 +505,8 @@ if [ -z "$EE_PREVIOUS_INSTALL" ]; then
     fi
     if [ ! -f /var/www/.profile ] && [ ! -f /var/www/.bashrc ]; then
         # create .profile & .bashrc for www-data user
-        cp -f $REPO_PATH/var/www/.profile /var/www/.profile
-        cp -f $REPO_PATH/var/www/.bashrc /var/www/.bashrc
+        cp -f $HOME/ubuntu-nginx-web-server/var/www/.profile /var/www/.profile
+        cp -f $HOME/ubuntu-nginx-web-server/var/www/.bashrc /var/www/.bashrc
 
         # set www-data as owner
         sudo chown www-data:www-data /var/www/.profile
@@ -527,7 +530,7 @@ if [ "$phpfpm71_install" = "y" ]; then
     php7.1-gd php7.1-curl php7.1-bz2 php7.1-xml php7.1-tidy php7.1-soap php7.1-bcmath -y php7.1-xsl -y
 
     # copy php7.1 config files
-    sudo cp -rf $REPO_PATH/etc/php/7.1/* /etc/php/7.1/
+    sudo cp -rf $HOME/ubuntu-nginx-web-server/etc/php/7.1/* /etc/php/7.1/
     sudo service php7.1-fpm restart
 
 fi
@@ -545,7 +548,7 @@ if [ "$phpfpm72_install" = "y" ]; then
     php7.2-curl php7.2-soap php7.2-mbstring php7.2-xsl php7.2-bcmath -y
 
     # copy php7.2 config files
-    sudo cp -rf $REPO_PATH/etc/php/7.2/* /etc/php/7.2/
+    sudo cp -rf $HOME/ubuntu-nginx-web-server/etc/php/7.2/* /etc/php/7.2/
     sudo service php7.2-fpm restart
 
 fi
@@ -559,7 +562,7 @@ echo "##########################################"
 
 if [ -d /etc/php/7.0 ]; then
 
-    cp -rf $REPO_PATH/etc/php/7.0/* /etc/php/7.0/
+    cp -rf $HOME/ubuntu-nginx-web-server/etc/php/7.0/* /etc/php/7.0/
 
 fi
 
@@ -611,16 +614,16 @@ echo "##########################################"
 
 # php7.1 & 7.2 common configurations
 
-cp -rf $REPO_PATH/etc/nginx/common/* /etc/nginx/common/
+cp -rf $HOME/ubuntu-nginx-web-server/etc/nginx/common/* /etc/nginx/common/
 
 # common nginx configurations
 
-cp -rf $REPO_PATH/etc/nginx/conf.d/* /etc/nginx/conf.d/
-cp -f $REPO_PATH/etc/nginx/proxy_params /etc/nginx/proxy_params
-cp -f $REPO_PATH/etc/nginx/mime.types /etc/nginx/mime.types
+cp -rf $HOME/ubuntu-nginx-web-server/etc/nginx/conf.d/* /etc/nginx/conf.d/
+cp -f $HOME/ubuntu-nginx-web-server/etc/nginx/proxy_params /etc/nginx/proxy_params
+cp -f $HOME/ubuntu-nginx-web-server/etc/nginx/mime.types /etc/nginx/mime.types
 
 # optimized nginx.config
-cp -f $REPO_PATH/etc/nginx/nginx.conf /etc/nginx/nginx.conf
+cp -f $HOME/ubuntu-nginx-web-server/etc/nginx/nginx.conf /etc/nginx/nginx.conf
 
 # reduce nginx logs rotation
 sed -i 's/size 10M/weekly/' /etc/logrotate.d/nginx
@@ -634,17 +637,17 @@ CONF_DEFAULT=$(grep -c status /etc/nginx/sites-available/default)
 
 if [ "$CONF_22222" = "0" ]; then
     # add nginx reverse-proxy for netdata on https://yourserver.hostname:22222/netdata/
-    sudo cp -f $REPO_PATH/etc/nginx/sites-available/22222 /etc/nginx/sites-available/22222
+    sudo cp -f $HOME/ubuntu-nginx-web-server/etc/nginx/sites-available/22222 /etc/nginx/sites-available/22222
 fi
 
 if [ "$CONF_UPSTREAM" = "0" ]; then
     # add netdata, php7.1 and php7.2 upstream
-    sudo cp -f $REPO_PATH/etc/nginx/conf.d/upstream.conf /etc/nginx/conf.d/upstream.conf
+    sudo cp -f $HOME/ubuntu-nginx-web-server/etc/nginx/conf.d/upstream.conf /etc/nginx/conf.d/upstream.conf
 fi
 
 if [ "$CONF_DEFAULT" = "0" ]; then
     # additional nginx locations for monitoring
-    sudo cp -f $REPO_PATH/etc/nginx/sites-available/default /etc/nginx/sites-available/default
+    sudo cp -f $HOME/ubuntu-nginx-web-server/etc/nginx/sites-available/default /etc/nginx/sites-available/default
 fi
 
 VERIFY_NGINX_CONFIG=$(nginx -t 2>&1 | grep failed)
@@ -669,8 +672,8 @@ echo "##########################################"
 echo " Configuring Fail2Ban"
 echo "##########################################"
 
-cp -rf $REPO_PATH/etc/fail2ban/filter.d/* /etc/fail2ban/filter.d/
-cp -rf $REPO_PATH/etc/fail2ban/jail.d/* /etc/fail2ban/jail.d/
+cp -rf $HOME/ubuntu-nginx-web-server/etc/fail2ban/filter.d/* /etc/fail2ban/filter.d/
+cp -rf $HOME/ubuntu-nginx-web-server/etc/fail2ban/jail.d/* /etc/fail2ban/jail.d/
 
 fail2ban-client reload
 
