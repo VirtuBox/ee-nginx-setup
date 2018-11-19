@@ -629,11 +629,13 @@ cp -f $HOME/ubuntu-nginx-web-server/etc/nginx/nginx.conf /etc/nginx/nginx.conf
 sed -i 's/size 10M/weekly/' /etc/logrotate.d/nginx
 sed -i 's/rotate 52/rotate 4/' /etc/logrotate.d/nginx
 
+wget -O $HOME/nginx-cloudflare-real-ip.sh https://raw.githubusercontent.com/VirtuBox/nginx-cloudflare-real-ip/master/nginx-cloudflare-real-ip.sh
+chmod +x $HOME/nginx-cloudflare-real-ip.sh
+$HOME/nginx-cloudflare-real-ip.sh
 
 # check nginx configuration
 CONF_22222=$(grep -c netdata /etc/nginx/sites-available/22222)
 CONF_UPSTREAM=$(grep -c netdata /etc/nginx/conf.d/upstream.conf)
-CONF_DEFAULT=$(grep -c status /etc/nginx/sites-available/default)
 
 if [ "$CONF_22222" = "0" ]; then
     # add nginx reverse-proxy for netdata on https://yourserver.hostname:22222/netdata/
@@ -643,11 +645,6 @@ fi
 if [ "$CONF_UPSTREAM" = "0" ]; then
     # add netdata, php7.1 and php7.2 upstream
     sudo cp -f $HOME/ubuntu-nginx-web-server/etc/nginx/conf.d/upstream.conf /etc/nginx/conf.d/upstream.conf
-fi
-
-if [ "$CONF_DEFAULT" = "0" ]; then
-    # additional nginx locations for monitoring
-    sudo cp -f $HOME/ubuntu-nginx-web-server/etc/nginx/sites-available/default /etc/nginx/sites-available/default
 fi
 
 VERIFY_NGINX_CONFIG=$(nginx -t 2>&1 | grep failed)
