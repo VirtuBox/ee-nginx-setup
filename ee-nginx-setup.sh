@@ -1,16 +1,18 @@
 #!/bin/bash
-#----------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # EE-NGINX-SETUP -  automated EasyEngine server configuration script
-#----------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Website:       https://virtubox.net
 # GitHub:        https://github.com/VirtuBox/ee-nginx-setup
-# Author:        VirtuBox
-# License:       M.I.T
-#----------------------------------------------------------------------------
-#
+# Copyright (c) 2018 VirtuBox <contact@virtubox.net>
+# This script is licensed under M.I.T
+# -------------------------------------------------------------------------
 # currently in progress, not ready to be used in production yet
-#
-#----------------------------------------------------------------------------
+# -------------------------------------------------------------------------
+
+
+
+
 
 CSI='\033['
 CEND="${CSI}0m"
@@ -34,6 +36,12 @@ if [ "$(id -u)" != "0" ]; then
     exit 1
 fi
 
+### Set Bins Path ###
+RM=/bin/rm
+CP=/bin/cp
+TAR=/bin/tar
+GZIP=/bin/gzip
+
 clear
 
 ##################################
@@ -47,6 +55,17 @@ echo ""
 if [ -d /etc/ee ] && [ -d /etc/mysql ] && [ -d /etc/nginx ]; then
     echo "Previous EasyEngine install detected"
     EE_PREVIOUS_INSTALL=1
+fi
+
+if [ -d $HOME.ssh ]; then
+    ssh_keys_check=$(cat $HOME/.ssh/authorized_keys)
+    if [ -z "$ssh_keys_check" ]; then
+        echo "the script require to use ssh keys authentification"
+        exit 1
+    fi
+else
+    echo "the script require to use ssh keys authentification"
+    exit 1
 fi
 
 ##################################
@@ -156,8 +175,6 @@ echo "use CTRL + C if you want to cancel installation"
 echo "#####################################"
 sleep 5
 
-
-
 ##################################
 # Update packages
 ##################################
@@ -179,13 +196,55 @@ echo "##########################################"
 echo " Installing useful packages"
 echo "##########################################"
 
-sudo apt-get install haveged curl git unzip zip fail2ban htop nload nmon ntp gnupg gnupg2 wget pigz tree ccze mycli -y
+sudo apt-get install haveged curl git unzip zip fail2ban htop nload nmon tar gzip ntp gnupg gnupg2 wget pigz tree ccze mycli -y
 
 # ntp time
 sudo systemctl enable ntp
 
 # increase history size
 export HISTSIZE=10000
+
+echo "##########################################"
+echo " Checking required executable path"
+echo "##########################################"
+
+### Make Sure Bins Exists ###
+verify_bins() {
+    [ ! -x $GZIP ] && {
+        echo "Executable $GZIP does not exists. Make sure correct path is set in $0."
+        exit 0
+    }
+    [ ! -x $TAR ] && {
+        echo "Executable $TAR does not exists. Make sure correct path is set in $0."
+        exit 0
+    }
+    [ ! -x $RM ] && {
+        echo "File $RM does not exists. Make sure correct path is set in $0."
+        exit 0
+    }
+    [ ! -x $CP ] && {
+        echo "File $CP does not exists. Make sure correct path is set in $0."
+        exit 0
+    }
+    [ ! -x $MKDIR ] && {
+        echo "File $MKDIR does not exists. Make sure correct path is set in $0."
+        exit 0
+    }
+    [ ! -x $MYSQLADMIN ] && {
+        echo "File $MYSQLADMIN does not exists. Make sure correct path is set in $0."
+        exit 0
+    }
+    [ ! -x $GREP ] && {
+        echo "File $GREP does not exists. Make sure correct path is set in $0."
+        exit 0
+    }
+    [ ! -x $FIND ] && {
+        echo "File $GREP does not exists. Make sure correct path is set in $0."
+        exit 0
+    }
+}
+
+verify_bins
 
 ##################################
 # clone repository
@@ -196,6 +255,8 @@ echo "###########################################"
 
 if [ ! -d $HOME/ubuntu-nginx-web-server ]; then
     git clone https://github.com/VirtuBox/ubuntu-nginx-web-server.git $HOME/ubuntu-nginx-web-server
+else
+git -C $HOME/ubuntu-nginx-web-server pull
 fi
 
 ##################################
@@ -441,8 +502,9 @@ if [ -z "$EE_PREVIOUS_INSTALL" ]; then
         echo " Installing EasyEngine"
         echo "##########################################"
 
-        wget -O ee https://raw.githubusercontent.com/EasyEngine/easyengine/master/install
-        bash ee
+        wget -O ee https://raw.githubusercontent.com/EasyEngine/easyengine/master-v3/install
+        chmod +x ee
+        ./ee
         source /etc/bash_completion.d/ee_auto.rc
 
     fi
@@ -746,6 +808,7 @@ if [ "$proftpd_install" = "y" ]; then
 
     if [ -d /etc/fail2ban ]; then
         echo -e '\n[proftpd]\nenabled = true\n' >> /etc/fail2ban/jail.d/custom.conf
+        fail2ban-client reload
 
     fi
 fi
@@ -843,6 +906,18 @@ if [ ! -x /usr/bin/cht.sh ]; then
 fi
 
 ##################################
+# Install ee-acme-sh
+##################################
+
+wget -O $HOME/install.sh https://raw.githubusercontent.com/VirtuBox/ee-acme-sh/master/install.sh
+chmod +x $HOME/install.sh
+$HOME/install.sh
+
+rm $HOME/install.sh
+
+source $HOME/.bashrc
+
+##################################
 # Secure EasyEngine Dashboard with Acme.sh
 ##################################
 
@@ -859,7 +934,7 @@ if [ "$MY_IP" = "$MY_HOSTNAME_IP" ]; then
     service nginx start
 
     if [ ! -d $HOME/.acme.sh/${MY_HOSTNAME}_ecc ]; then
-        $HOME/.acme.sh/acme.sh --issue -d $MY_HOSTNAME --keylength ec-384 --standalone --pre-hook "service nginx stop " --post-hook "service nginx start"
+        $HOME/.acme.sh/acme.sh --issue -d $MY_HOSTNAME -k ec-384 --standalone --pre-hook "service nginx stop" --post-hook "service nginx start"
     fi
 
     if [ -d /etc/letsencrypt/live/$MY_HOSTNAME ]; then
@@ -874,7 +949,7 @@ if [ "$MY_IP" = "$MY_HOSTNAME_IP" ]; then
         --cert-file /etc/letsencrypt/live/${MY_HOSTNAME}/cert.pem \
         --key-file /etc/letsencrypt/live/${MY_HOSTNAME}/key.pem \
         --fullchain-file /etc/letsencrypt/live/${MY_HOSTNAME}/fullchain.pem \
-        --reloadcmd "systemctl enable nginx.service && systemct restart nginx.service"
+        --reloadcmd "service nginx restart"
     fi
 
     if [ -f /etc/letsencrypt/live/${MY_HOSTNAME}/fullchain.pem ] && [ -f /etc/letsencrypt/live/${MY_HOSTNAME}/key.pem ]; then
