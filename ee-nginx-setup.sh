@@ -57,14 +57,16 @@ if [ -d /etc/ee ] && [ -d /etc/mysql ] && [ -d /etc/nginx ]; then
     EE_PREVIOUS_INSTALL=1
 fi
 
-if [ -d $HOME.ssh ]; then
-    ssh_keys_check=$(cat $HOME/.ssh/authorized_keys)
-    if [ -z "$ssh_keys_check" ]; then
-        echo "the script require to use ssh keys authentification"
+if [ -d $HOME/.ssh ]; then
+    ecdsa_keys_check=$(grep "ecdsa-sha2" -r $HOME/.ssh)
+    rsa_keys_check=$(grep "ssh-rsa" -r $HOME/.ssh)
+    ed25519_keys_check=$(grep "ssh-ed25519" -r $HOME/.ssh)
+    if [ -z "$ecdsa_keys_check" ] && [ -z "$rsa_keys_check" ] && [ -z "$ed25519_keys_check" ]; then
+        echo "This script require to use ssh keys authentification. Please make sure you have properly added your public ssh keys into .ssh/authorized_keys"
         exit 1
     fi
 else
-    echo "the script require to use ssh keys authentification"
+        echo "This script require to use ssh keys authentification. Please make sure you have properly added your public ssh keys into .ssh/authorized_keys"
     exit 1
 fi
 
@@ -298,7 +300,7 @@ sudo ufw allow 22
 
 # custom ssh port
 if [ "$CURRENT_SSH_PORT" != "22" ];then
-    sudo ufw allow $CURRENT_SSH_PORT
+    sudo ufw allow "$CURRENT_SSH_PORT"
 fi
 
 # dns
@@ -355,12 +357,14 @@ echo never >/sys/kernel/mm/transparent_hugepage/enabled
 if [ ! -x /usr/bin/docker ]; then
 
     echo "" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-    echo "# Disables packet forwarding" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-    echo "net.ipv4.ip_forward = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-    echo "net.ipv4.conf.all.forwarding = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-    echo "net.ipv4.conf.default.forwarding = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-    echo "net.ipv6.conf.all.forwarding = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-    echo "net.ipv6.conf.default.forwarding = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
+    {
+    echo "# Disables packet forwarding"
+    echo "net.ipv4.ip_forward = 0"
+    echo "net.ipv4.conf.all.forwarding = 0"
+    echo "net.ipv4.conf.default.forwarding = 0"
+    echo "net.ipv6.conf.all.forwarding = 0"
+    echo "net.ipv6.conf.default.forwarding = 0"
+    } >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
 
 fi
 
@@ -369,12 +373,14 @@ fi
 # for each interface found, add the following configuration to sysctl
 NET_INTERFACES_WAN=$(ip -4 route get 8.8.8.8 | grep -oP "dev [^[:space:]]+ " | cut -d ' ' -f 2)
 echo "" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-echo "# do not autoconfigure IPv6 on $NET_INTERFACES_WAN" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-echo "net.ipv6.conf.$NET_INTERFACES_WAN.autoconf = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-echo "net.ipv6.conf.$NET_INTERFACES_WAN.accept_ra = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-echo "net.ipv6.conf.$NET_INTERFACES_WAN.accept_ra = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-echo "net.ipv6.conf.$NET_INTERFACES_WAN.autoconf = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-echo "net.ipv6.conf.$NET_INTERFACES_WAN.accept_ra_defrtr = 0" >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
+{
+echo "# do not autoconfigure IPv6 on $NET_INTERFACES_WAN"
+echo "net.ipv6.conf.$NET_INTERFACES_WAN.autoconf = 0"
+echo "net.ipv6.conf.$NET_INTERFACES_WAN.accept_ra = 0"
+echo "net.ipv6.conf.$NET_INTERFACES_WAN.accept_ra = 0"
+echo "net.ipv6.conf.$NET_INTERFACES_WAN.autoconf = 0"
+echo "net.ipv6.conf.$NET_INTERFACES_WAN.accept_ra_defrtr = 0"
+ } >>/etc/sysctl.d/60-ubuntu-nginx-web-server.conf
 
 
 ##################################
@@ -388,7 +394,7 @@ if [[ "$mariadb_server_install" == "y" || "$mariadb_client_install" == "y" ]]; t
         echo " Adding MariaDB $mariadb_version_install repository"
         echo "##########################################"
 
-        wget -qO mariadb_repo_setup https://downloads.mariadb.com/MariaDB/mariadb_repo_setup
+        wget -O mariadb_repo_setup https://downloads.mariadb.com/MariaDB/mariadb_repo_setup
         chmod +x mariadb_repo_setup
         ./mariadb_repo_setup --mariadb-server-version=$mariadb_version_install --skip-maxscale -y
         rm mariadb_repo_setup
@@ -595,6 +601,9 @@ if [ "$phpfpm71_install" = "y" ]; then
     sudo cp -rf $HOME/ubuntu-nginx-web-server/etc/php/7.1/* /etc/php/7.1/
     sudo service php7.1-fpm restart
 
+        # commit changes
+    git -C /etc/php/ add /etc/php/ && git -C /etc/php/ commit -m "add php7.1 configuration"
+
 fi
 
 ##################################
@@ -612,6 +621,9 @@ if [ "$phpfpm72_install" = "y" ]; then
     # copy php7.2 config files
     sudo cp -rf $HOME/ubuntu-nginx-web-server/etc/php/7.2/* /etc/php/7.2/
     sudo service php7.2-fpm restart
+
+    # commit changes
+    git -C /etc/php/ add /etc/php/ && git -C /etc/php/ commit -m "add php7.2 configuration"
 
 fi
 
@@ -678,11 +690,17 @@ echo "##########################################"
 
 cp -rf $HOME/ubuntu-nginx-web-server/etc/nginx/common/* /etc/nginx/common/
 
+# commit changes
+git -C /etc/nginx/ add /etc/nginx/ && git -C /etc/nginx/ commit -m "update common configurations"
+
 # common nginx configurations
 
 cp -rf $HOME/ubuntu-nginx-web-server/etc/nginx/conf.d/* /etc/nginx/conf.d/
 cp -f $HOME/ubuntu-nginx-web-server/etc/nginx/proxy_params /etc/nginx/proxy_params
 cp -f $HOME/ubuntu-nginx-web-server/etc/nginx/mime.types /etc/nginx/mime.types
+
+# commit changes
+git -C /etc/nginx/ add /etc/nginx/ && git -C /etc/nginx/ commit -m "update conf.d configurations"
 
 # optimized nginx.config
 cp -f $HOME/ubuntu-nginx-web-server/etc/nginx/nginx.conf /etc/nginx/nginx.conf
@@ -694,6 +712,9 @@ sed -i 's/rotate 52/rotate 4/' /etc/logrotate.d/nginx
 wget -O $HOME/nginx-cloudflare-real-ip.sh https://raw.githubusercontent.com/VirtuBox/nginx-cloudflare-real-ip/master/nginx-cloudflare-real-ip.sh
 chmod +x $HOME/nginx-cloudflare-real-ip.sh
 $HOME/nginx-cloudflare-real-ip.sh
+
+# commit changes
+git -C /etc/nginx/ add /etc/nginx/ && git -C /etc/nginx/ commit -m "update nginx.conf and setup cloudflare visitor real IP restore"
 
 # check nginx configuration
 CONF_22222=$(grep -c netdata /etc/nginx/sites-available/22222)
@@ -822,7 +843,7 @@ if [ ! -d /etc/netdata ]; then
     echo "##########################################"
 
     ## install nedata
-    wget -qO kickstart.sh https://my-netdata.io/kickstart.sh
+    wget -O kickstart.sh https://my-netdata.io/kickstart.sh
     chmod +x kickstart.sh
     ./kickstart.sh all --dont-wait >>/tmp/ubuntu-nginx-web-server.log 2>&1
 
@@ -930,8 +951,7 @@ if [ "$MY_IP" = "$MY_HOSTNAME_IP" ]; then
     echo " Securing EasyEngine Backend"
     echo "##########################################"
     apt-get install -y socat
-    systemctl enable nginx.service
-    service nginx start
+
 
     if [ ! -d $HOME/.acme.sh/${MY_HOSTNAME}_ecc ]; then
         $HOME/.acme.sh/acme.sh --issue -d $MY_HOSTNAME -k ec-384 --standalone --pre-hook "service nginx stop" --post-hook "service nginx start"
